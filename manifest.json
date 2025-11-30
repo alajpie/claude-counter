@@ -10,9 +10,7 @@
 		}
 	},
 	"background": {
-		"scripts": [
-			"background.js"
-		],
+		"service_worker": "background.js",
 		"type": "module"
 	},
 	"content_scripts": [
@@ -32,8 +30,8 @@
 	],
 	"permissions": [
 		"storage",
+		"alarms",
 		"webRequest",
-		"webRequestBlocking",
 		"cookies",
 		"tabs"
 	],
@@ -63,5 +61,5 @@
 		"default_icon": "icon128.png",
 		"default_title": "Claude Counter"
 	},
-	"incognito": "not_allowed"
+	"incognito": "split"
 }

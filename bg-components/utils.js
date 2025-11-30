@@ -1,6 +1,5 @@
 // Configuration object (moved from constants.json)
 const CONFIG = {
-	UI_UPDATE_INTERVAL_MS: 3000,
 	"OUTPUT_TOKEN_MULTIPLIER": 5,
 	"USAGE_CAP": {
 		"BASELINE": 700000,
@@ -69,7 +68,7 @@ const CONFIG = {
 };
 
 const isElectron = chrome.action === undefined;
-const FORCE_DEBUG = true; // Set to true to force debug mode
+const FORCE_DEBUG = false; // Set to true to force debug mode
 
 setStorageValue('force_debug', FORCE_DEBUG);
 
@@ -89,13 +88,13 @@ async function RawLog(sender, ...args) {
 		return;
 	}
 	if (level === "debug") {
-		console.log("[UsageTracker]", ...args);
+		console.log("[ClaudeCounter]", ...args);
 	} else if (level === "warn") {
-		console.warn("[UsageTracker]", ...args);
+		console.warn("[ClaudeCounter]", ...args);
 	} else if (level === "error") {
-		console.error("[UsageTracker]", ...args);
+		console.error("[ClaudeCounter]", ...args);
 	} else {
-		console.log("[UsageTracker]", ...args);
+		console.log("[ClaudeCounter]", ...args);
 	}
 
 	const timestamp = new Date().toLocaleString('default', {
@@ -294,7 +293,7 @@ class StoredMap {
 
 // Browser storage helpers
 function getOrgStorageKey(orgId, type) {
-	return `claudeUsageTracker_v6_${orgId}_${type}`;
+	return `claudeCounter_v6_${orgId}_${type}`;
 }
 
 async function setStorageValue(key, value) {
@@ -313,6 +312,15 @@ async function removeStorageValue(key) {
 }
 
 // Background -> Content messaging
+// Track tabs that have confirmed a content-script listener
+const readyTabs = new Set();
+export function markTabReady(tabId) {
+	if (typeof tabId === 'number') readyTabs.add(tabId);
+}
+export function unmarkTab(tabId) {
+	readyTabs.delete(tabId);
+}
+
 async function sendTabMessage(tabId, message, maxRetries = 10, delay = 100) {
 	let counter = maxRetries;
 	await Log("Sending message to tab:", tabId, message);
@@ -332,7 +340,8 @@ async function sendTabMessage(tabId, message, maxRetries = 10, delay = 100) {
 		}
 		counter--;
 	}
-	throw new Error(`Failed to send message to tab ${tabId} after ${maxRetries} retries.`);
+	await Log("warn", `Failed to send message to tab ${tabId} after ${maxRetries} retries.`);
+	return null;
 }
 
 // Content -> Background messaging

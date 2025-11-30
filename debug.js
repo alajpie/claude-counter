@@ -6,6 +6,8 @@ document.getElementById('refresh').addEventListener('click', showLogs);
 document.getElementById('clear').addEventListener('click', clearLogs);
 document.getElementById('enableDebug').addEventListener('click', toggleDebugMode);
 document.getElementById('enablePermanentDebug').addEventListener('click', enablePermanentDebug);
+document.getElementById('saveApiKey').addEventListener('click', saveApiKey);
+document.getElementById('clearApiKey').addEventListener('click', clearApiKey);
 
 function showLogs() {
 	browser.storage.local.get('debug_logs')
@@ -136,10 +138,56 @@ function stopAutoRefresh() {
 	}
 }
 
+function refreshApiKeyStatus() {
+	const statusElement = document.getElementById('apiKeyStatus');
+	const input = document.getElementById('apiKeyInput');
+
+	browser.runtime.sendMessage({ type: 'getAPIKey' })
+		.then((apiKey) => {
+			if (apiKey) {
+				input.value = apiKey;
+				statusElement.textContent = 'API key is set (stored locally).';
+			} else {
+				input.value = '';
+				statusElement.textContent = 'API key not set.';
+			}
+		})
+		.catch(() => {
+			statusElement.textContent = 'Unable to read API key.';
+		});
+}
+
+function saveApiKey() {
+	const input = document.getElementById('apiKeyInput');
+	const statusElement = document.getElementById('apiKeyStatus');
+	const newKey = input.value.trim();
+
+	browser.runtime.sendMessage({ type: 'setAPIKey', newKey })
+		.then((result) => {
+			if (newKey === '') {
+				statusElement.textContent = 'API key cleared.';
+			} else if (result) {
+				statusElement.textContent = 'API key saved and validated.';
+			} else {
+				statusElement.textContent = 'API key validation failed.';
+			}
+		})
+		.catch(() => {
+			statusElement.textContent = 'Error saving API key.';
+		});
+}
+
+function clearApiKey() {
+	const input = document.getElementById('apiKeyInput');
+	input.value = '';
+	saveApiKey();
+}
+
 // Initial setup
 showLogs();
 updateDebugStatus();
 startAutoRefresh();
+refreshApiKeyStatus();
 
 if (!chrome.tabs?.create) {
 	const returnButton = document.getElementById('returnToClaude');

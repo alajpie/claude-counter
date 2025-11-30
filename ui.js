@@ -1,92 +1,57 @@
-/* global UsageData, ConversationData, SidebarUI, ChatUI, NotificationCard, sendBackgroundMessage, config:writable, getConversationId, getCurrentModel, findSidebarContainers, Log, ui:writable, waitForElement, sleep, setupRateLimitMonitoring */
+/* global ConversationData, ChatUI, sendBackgroundMessage, config:writable, getConversationId, Log, ui:writable, waitForElement, sleep, setupRateLimitMonitoring, observeUrlChanges */
 'use strict';
 
 // Main UI Manager
 class UIManager {
-	constructor(currModel) {
-		this.currentlyDisplayedModel = currModel;
-		this.sidebarUI = new SidebarUI(this);
+	constructor() {
 		this.chatUI = new ChatUI();
-		this.usageData = null;          // Changed from rawModelData
 		this.conversationData = null;
+		this.cacheCountdownInterval = null;
+		this.uiReinjectInterval = null;
 	}
 
 	async initialize() {
-		await this.sidebarUI.initialize();
 		this.chatUI.initialize();
 
-		// Initial update - just request, don't await response
-		await sendBackgroundMessage({ type: 'requestData' });
+		// Initial update for the current URL/conversation (if any)
+		await this.handleUrlChange();
+
+		// Org init - just request, don't await response
 		await sendBackgroundMessage({ type: 'initOrg' });
 
-		// Start animation frame loop
-		this.lastFullUpdate = 0;
-		this.lastMediumUpdate = 0;
-		this.lastHighUpdate = 0;
-		this.highUpdateFrequency = Math.round(config.UI_UPDATE_INTERVAL_MS / 4);	//750
-		this.mediumUpdateFrequency = Math.round(config.UI_UPDATE_INTERVAL_MS / 2);	//1500
-		this.fullUpdateFrequency = config.UI_UPDATE_INTERVAL_MS;	//3000
-		this.scheduleNextFrame();
+		// Set up event-driven URL observer for conversation changes
+		observeUrlChanges(() => this.handleUrlChange());
+
+		this.startIntervals();
+
 	}
 
-	scheduleNextFrame() {
-		requestAnimationFrame((timestamp) => this.frameUpdate(timestamp));
+	startIntervals() {
+		if (!this.cacheCountdownInterval) {
+			this.cacheCountdownInterval = setInterval(() => this.updateCacheCountdown(), 1000);
+		}
+		if (!this.uiReinjectInterval) {
+			this.uiReinjectInterval = setInterval(() => this.checkUiReinject(), 2000);
+		}
 	}
 
-	async frameUpdate(timestamp) {
-		if (!this.lastHighUpdate || timestamp - this.lastHighUpdate >= this.highUpdateFrequency) {
-			await this.highFrequencyUpdates();
-			this.lastHighUpdate = timestamp;
+	stopIntervals() {
+		if (this.cacheCountdownInterval) {
+			clearInterval(this.cacheCountdownInterval);
+			this.cacheCountdownInterval = null;
 		}
-
-		if (!this.lastMediumUpdate || timestamp - this.lastMediumUpdate >= this.mediumUpdateFrequency) {
-			await this.mediumFrequencyUpdates();
-			this.lastMediumUpdate = timestamp;
+		if (this.uiReinjectInterval) {
+			clearInterval(this.uiReinjectInterval);
+			this.uiReinjectInterval = null;
 		}
-
-		if (!this.lastFullUpdate || timestamp - this.lastFullUpdate >= this.fullUpdateFrequency) {
-			await this.lowFrequencyUpdates();
-			this.lastFullUpdate = timestamp;
-		}
-
-		this.scheduleNextFrame();
 	}
 
-	async highFrequencyUpdates() {
-		const currConversation = getConversationId();
-		const newModel = await getCurrentModel(200);
-		if (newModel && newModel !== this.currentlyDisplayedModel) {
-			await Log("Model changed, updating UI locally");
-			this.currentlyDisplayedModel = newModel;
-
-			// Update the UI displays with the new model without requesting data
-			if (this.usageData) {
-				await this.chatUI.updateUsageDisplay(this.usageData, this.currentlyDisplayedModel);
-			}
-
-			if (this.conversationData && this.usageData) {
-				await this.chatUI.updateConversationDisplay(this.conversationData, this.usageData, this.currentlyDisplayedModel);
-			}
-		}
-
-		const cacheExpired = this.chatUI.updateCachedTime();
-		if (cacheExpired && currConversation) {
-			// Cache expired - request fresh data to update costs
-			await Log("Cache expired, requesting data");
-			sendBackgroundMessage({
-				type: 'requestData',
-				conversationId: currConversation
-			});
-		}
-
-		//UI presence checks
-		const sidebarContainers = await findSidebarContainers();
-		await this.sidebarUI.checkAndReinject(sidebarContainers);
-		await this.chatUI.checkAndReinject();
+	restartIntervals() {
+		this.stopIntervals();
+		this.startIntervals();
 	}
 
-	async mediumFrequencyUpdates() {
-		// Check for conversation changes
+	async handleUrlChange() {
 		const newConversation = getConversationId();
 		const isHomePage = newConversation === null;
 
@@ -107,67 +72,46 @@ class UIManager {
 		// Update home page state if needed
 		if (isHomePage && this.conversationData !== null) {
 			this.conversationData = null;
-			this.chatUI.updateEstimate();
 			this.chatUI.updateCostAndLength();
-			this.conversationData = null; // Reset conversation data
 		}
+	}
 
-		// Check if the current usage data is expired
-		if (this.usageData && this.usageData.isExpired()) {
-			await Log("Usage data expired, triggering reset");
-
-			const orgId = document.cookie
-				.split('; ')
-				.find(row => row.startsWith('lastActiveOrg='))
-				?.split('=')[1];
-
-			if (orgId) {
-				// Just trigger the reset - background will handle updating all tabs, including us
-				await sendBackgroundMessage({
-					type: 'checkAndResetExpired',
-					orgId: orgId
+	async updateCacheCountdown() {
+		const cacheExpired = this.chatUI.updateCachedTime();
+		if (cacheExpired) {
+			const currConversation = getConversationId();
+			if (currConversation) {
+				// Cache expired - request fresh data to update costs
+				await Log("Cache expired, requesting data");
+				sendBackgroundMessage({
+					type: 'requestData',
+					conversationId: currConversation
 				});
 			}
 		}
 	}
 
-	async lowFrequencyUpdates() {
-		this.chatUI.updateResetTime();
-	}
-
-	// In UIManager
-	async updateUsage(usageData) {
-		await Log("Updating usage data", usageData);
-		if (!usageData) return;
-
-		this.usageData = UsageData.fromJSON(usageData);
-		this.usageData.usageCap = this.usageData.usageCap * (await sendBackgroundMessage({ type: 'getCapModifier' }) || 1);
-		// Update sidebar
-		if (this.usageData) {
-			await this.sidebarUI.updateProgressBars(this.usageData);
-		}
-
-		// Update chat UI - progress bar, reset time, and estimate if we have cost data
-		if (this.chatUI && this.usageData) {
-			await this.chatUI.updateUsageDisplay(this.usageData, this.currentlyDisplayedModel);
-		}
+	async checkUiReinject() {
+		await this.chatUI.checkAndReinject();
 	}
 
 	async updateConversation(conversationData) {
-		await Log("Updating conversation data", conversationData);
+		await Log("Updating conversation data", {
+			conversationId: conversationData.conversationId,
+			length: conversationData.length
+		});
 		if (!conversationData) return;
 
 		this.conversationData = ConversationData.fromJSON(conversationData);
 
-		// Update current model from conversation if available - disabled as it can cause bugs
-		/*if (this.conversationData?.model) {
-			this.currentlyDisplayedModel = this.conversationData.model;
-		}*/
-
-		// Update chat UI - cost/length AND estimate (since we have new cost data)
+		// Update chat UI immediately - no waiting for polling cycles
 		if (this.chatUI && this.conversationData) {
 			await Log("Updating conversation data:", this.conversationData);
-			await this.chatUI.updateConversationDisplay(this.conversationData, this.usageData, this.currentlyDisplayedModel);
+			await this.chatUI.updateConversationDisplay(this.conversationData);
+			// Refresh native usage bars after each conversation update
+			if (typeof this.chatUI.refreshNativeUsage === 'function') {
+				this.chatUI.refreshNativeUsage().catch(() => { });
+			}
 		}
 	}
 }
@@ -176,18 +120,8 @@ class UIManager {
 // Listen for messages from background
 browser.runtime.onMessage.addListener(async (message) => {
 	await Log("Content received message:", message.type);
-	if (message.type === 'updateUsage') {
-		if (ui) await ui.updateUsage(message.data.usageData);
-	}
-
 	if (message.type === 'updateConversationData') {
 		if (ui) await ui.updateConversation(message.data.conversationData);
-	}
-
-	if (message.type === 'getActiveModel') {
-		const currModel = await getCurrentModel();
-		if (!currModel && ui) return ui.currentlyDisplayedModel;
-		return currModel || "Sonnet";
 	}
 
 	if (message.action === "getOrgID") {
@@ -276,12 +210,18 @@ async function initExtension() {
 		return;
 	}
 	userMenuButton.setAttribute('data-script-loaded', true);
-	await Log('We\'re unique, initializing Chat Token Counter...');
+	await Log('We\'re unique, initializing Claude Counter...');
 
 	await Log("Initializing fetch...")
 	await setupRateLimitMonitoring();
 
-	ui = new UIManager(await getCurrentModel());
+	// Set up fetch monkeypatch to intercept conversation data
+	const patterns = await sendBackgroundMessage({ type: 'getMonkeypatchPatterns' });
+	if (patterns) {
+		await setupRequestInterception(patterns);
+	}
+
+	ui = new UIManager();
 	await ui.initialize();
 
 	// Don't await responses anymore
@@ -294,6 +234,6 @@ async function initExtension() {
 	try {
 		await initExtension();
 	} catch (error) {
-		await Log("error", 'Failed to initialize Chat Token Counter:', error);
+	await Log("error", 'Failed to initialize Claude Counter:', error);
 	}
 })();

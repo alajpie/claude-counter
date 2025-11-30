@@ -61,22 +61,3 @@ export async function scheduleAlarm(name, options) {
 		}
 	}
 }
-
-export async function createNotification(options) {
-	if (!isElectron) {
-		// Real Chrome - create notification directly
-		return chrome.notifications.create(options);
-	} else {
-		// Electron - inject console.log directly
-		const tabs = await chrome.tabs.query({ url: '*://claude.ai/*' });
-		if (tabs.length > 0) {
-			await chrome.scripting.executeScript({
-				target: { tabId: tabs[0].id },
-				func: (data) => {
-					console.log('CUT_NOTIFICATION:' + JSON.stringify(data));
-				},
-				args: [options]
-			});
-		}
-	}
-}

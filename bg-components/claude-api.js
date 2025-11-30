@@ -1,6 +1,6 @@
 import { CONFIG, RawLog, FORCE_DEBUG, StoredMap, getStorageValue, setStorageValue, getOrgStorageKey, sendTabMessage, containerFetch } from './utils.js';
 import { tokenCounter, tokenStorageManager, getTextFromContent } from './tokenManagement.js';
-import { UsageData, ConversationData } from './bg-dataclasses.js';
+import { ConversationData } from './bg-dataclasses.js';
 
 async function Log(...args) {
 	await RawLog("claude-api", ...args);
@@ -34,6 +34,11 @@ class ClaudeAPI {
 	// Factory method - returns a ConversationAPI instance
 	async getConversation(conversationId) {
 		return new ConversationAPI(conversationId, this);
+	}
+
+	// Native usage summary (session + weekly) from Claude
+	async getUsageSummary() {
+		return this.getRequest(`/organizations/${this.orgId}/usage`);
 	}
 
 	// Platform operations
@@ -326,7 +331,14 @@ class ConversationAPI {
 	}
 
 	// Lazy load conversation data
-	async getData(full_tree = false) {
+	async getData(full_tree = false, interceptedData = null) {
+		// If we have intercepted data, use it directly (zero API calls!)
+		if (interceptedData) {
+			await Log("Using intercepted conversation data.");
+			this.conversationData = interceptedData;
+			return this.conversationData;
+		}
+
 		if (!this.conversationData || full_tree) {
 			this.conversationData = await this.api.getRequest(
 				`/organizations/${this.api.orgId}/chat_conversations/${this.conversationId}?tree=${full_tree}&rendering_mode=messages&render_all_tools=true`
@@ -335,8 +347,8 @@ class ConversationAPI {
 		return this.conversationData;
 	}
 
-	async getCachingInfo(isNewMessage) {
-		const conversationData = await this.getData(true);
+	async getCachingInfo(isNewMessage, interceptedData = null) {
+		const conversationData = await this.getData(true, interceptedData);
 		// Build message map and find latest assistants
 		const messageMap = new Map();
 		let latestAssistant = null;
@@ -445,32 +457,28 @@ class ConversationAPI {
 		};
 	}
 
-	async getInfo(isNewMessage) {
+	async getInfo(isNewMessage, interceptedData = null) {
 		await Log("API: Requesting information for conversation:", this.conversationId);
-		const conversationData = await this.getData(true);
-		const cachingInfo = await this.getCachingInfo(isNewMessage);
+		const conversationData = await this.getData(true, interceptedData);
+		const cachingInfo = await this.getCachingInfo(isNewMessage, interceptedData);
 		if (!cachingInfo) return undefined;
 
 		const { currentTrunk, conversationIsCached, cacheEndId, conversationIsCachedUntil } = cachingInfo;
 
-		// Initialize token counting
-		let cacheIsActive = conversationIsCached;
+		// Initialize token counting (length only)
 		let lengthTokens = CONFIG.BASE_SYSTEM_PROMPT_LENGTH;
-		let costTokens = CONFIG.BASE_SYSTEM_PROMPT_LENGTH * CONFIG.CACHING_MULTIPLIER;
 
 		// Add settings costs
 		for (const [setting, enabled] of Object.entries(conversationData.settings)) {
 			await Log("Setting:", setting, enabled);
 			if (enabled && CONFIG.FEATURE_COSTS[setting]) {
 				lengthTokens += CONFIG.FEATURE_COSTS[setting];
-				costTokens += CONFIG.FEATURE_COSTS[setting] * CONFIG.CACHING_MULTIPLIER;
 			}
 		}
 
 		if ("enabled_web_search" in conversationData.settings || "enabled_bananagrams" in conversationData.settings) {
 			if (conversationData.settings?.enabled_websearch || conversationData.settings?.enabled_bananagrams) {
 				lengthTokens += CONFIG.FEATURE_COSTS["citation_info"];
-				costTokens += CONFIG.FEATURE_COSTS["citation_info"] * CONFIG.CACHING_MULTIPLIER;
 			}
 		}
 
@@ -478,9 +486,9 @@ class ConversationAPI {
 		const humanMessageData = [];
 		const assistantMessageData = [];
 
-		for (let i = 0; i < currentTrunk.length; i++) {
-			const rawMessageData = currentTrunk[i];
-			const message = new MessageAPI(rawMessageData, cacheIsActive, this.api);
+			for (let i = 0; i < currentTrunk.length; i++) {
+				const rawMessageData = currentTrunk[i];
+				const message = new MessageAPI(rawMessageData, conversationIsCached, this.api);
 
 			// Run both in parallel
 			const [fileTokens, syncTokens] = await Promise.all([
@@ -488,11 +496,8 @@ class ConversationAPI {
 				message.getSyncTokens()
 			]);
 
-			// Then apply the calculations
-			lengthTokens += fileTokens + syncTokens;
-			costTokens += message.isCached ?
-				(fileTokens + syncTokens) * CONFIG.CACHING_MULTIPLIER :
-				(fileTokens + syncTokens);
+				// Then apply the calculations (length only)
+				lengthTokens += fileTokens + syncTokens;
 
 			// Text content
 			const textContent = await message.getTextContent(false, this, this.orgId);
@@ -503,41 +508,27 @@ class ConversationAPI {
 				assistantMessageData.push({ content: textContent, isCached: message.isCached });
 			}
 
-			// Last message output tokens
-			if (i === currentTrunk.length - 1) {
-				const lastMessageContent = await message.getTextContent(true, this, this.orgId);
-				costTokens += await tokenCounter.countText(lastMessageContent) * CONFIG.OUTPUT_TOKEN_MULTIPLIER;
+				// Last message output tokens – include in total length estimate
+				if (i === currentTrunk.length - 1) {
+					const lastMessageContent = await message.getTextContent(true, this, this.orgId);
+					lengthTokens += await tokenCounter.countText(lastMessageContent) * CONFIG.OUTPUT_TOKEN_MULTIPLIER;
+				}
+
+				// Cache boundaries only affect timer, not length/cost anymore.
 			}
 
-			// Update cache status
-			if (message.uuid === cacheEndId) {
-				cacheIsActive = false;
-				await Log("Hit cache boundary at message:", message.uuid);
-			}
-		}
-
-		// Batch token counting
-		const allMessageTokens = await tokenCounter.countMessages(
-			humanMessageData.map(m => m.content),
-			assistantMessageData.map(m => m.content)
-		);
-		lengthTokens += allMessageTokens;
-		costTokens += allMessageTokens;
-
-		// Subtract cached tokens
-		const cachedHuman = humanMessageData.filter(m => m.isCached).map(m => m.content);
-		const cachedAssistant = assistantMessageData.filter(m => m.isCached).map(m => m.content);
-		if (cachedHuman.length > 0 || cachedAssistant.length > 0) {
-			const cachedTokens = await tokenCounter.countMessages(cachedHuman, cachedAssistant);
-			costTokens -= cachedTokens * (1 - CONFIG.CACHING_MULTIPLIER);
-		}
+			// Batch token counting for message text
+			const allMessageTokens = await tokenCounter.countMessages(
+				humanMessageData.map(m => m.content),
+				assistantMessageData.map(m => m.content)
+			);
+			lengthTokens += allMessageTokens;
 
 		// Steps 9-10: Project tokens and model detection
-		if (conversationData.project_uuid) {
-			const projectStats = await this.api.getProjectStats(conversationData.project_uuid, isNewMessage);
-			lengthTokens += projectStats.tokenInfo.length;
-			costTokens += projectStats.tokenInfo.isCached ? 0 : projectStats.tokenInfo.length;
-		}
+			if (conversationData.project_uuid) {
+				const projectStats = await this.api.getProjectStats(conversationData.project_uuid, isNewMessage);
+				lengthTokens += projectStats.tokenInfo.length;
+			}
 
 		let conversationModelType = undefined;
 		let modelString = "sonnet"
@@ -551,29 +542,17 @@ class ConversationAPI {
 
 		await Log(`Total tokens for conversation ${this.conversationId}: ${lengthTokens} with model ${conversationModelType}`);
 
-		// Step 11: Future cost
-		let futureCost;
-		if (isNewMessage) {
-			const futureConversation = await this.getInfo(false);
-			futureCost = futureConversation.cost;
-		} else {
-			futureCost = Math.round(costTokens);
-		}
-
 		const lastRawMessage = currentTrunk[currentTrunk.length - 1];
 		// Step 12: Return result
-		return new ConversationData({
-			conversationId: this.conversationId,
-			length: Math.round(lengthTokens),
-			cost: Math.round(costTokens),
-			futureCost: futureCost,
-			model: conversationModelType,
-			costUsedCache: conversationIsCached,
-			conversationIsCachedUntil: conversationIsCachedUntil,
-			projectUuid: conversationData.project_uuid,
-			settings: conversationData.settings,
-			lastMessageTimestamp: new Date(lastRawMessage.created_at).getTime() // Add this!
-		});
+			return new ConversationData({
+				conversationId: this.conversationId,
+				length: Math.round(lengthTokens),
+				model: conversationModelType,
+				conversationIsCachedUntil: conversationIsCachedUntil,
+				projectUuid: conversationData.project_uuid,
+				settings: conversationData.settings,
+				lastMessageTimestamp: new Date(lastRawMessage.created_at).getTime() // Add this!
+			});
 	}
 }
 

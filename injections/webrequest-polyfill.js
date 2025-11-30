@@ -60,11 +60,23 @@
 		const response = await originalFetch(...args);
 
 		if (patterns.onCompleted.regexes.some(pattern => new RegExp(pattern).test(url))) {
+			// Clone the response so Claude's UI can still read it
+			const clonedResponse = response.clone();
+
+			// Try to read response body as JSON
+			let responseBody = null;
+			try {
+				responseBody = await clonedResponse.json();
+			} catch (e) {
+				// Not JSON or empty, that's okay
+			}
+
 			window.dispatchEvent(new CustomEvent('interceptedResponse', {
 				detail: {
 					...details,
 					status: response.status,
-					statusText: response.statusText
+					statusText: response.statusText,
+					responseBody: responseBody
 				}
 			}));
 		}

@@ -5,7 +5,7 @@ const BLUE_HIGHLIGHT = "#2c84db";
 const RED_WARNING = "#de2929";
 const SUCCESS_GREEN = "#22c55e";
 // Dynamic debug setting - will be loaded from storage
-let FORCE_DEBUG = true;
+let FORCE_DEBUG = false;
 // Load FORCE_DEBUG from storage and set up error handlers
 browser.storage.local.get('force_debug').then(result => {
 	FORCE_DEBUG = result.force_debug || false;
@@ -28,6 +28,9 @@ browser.storage.local.get('force_debug').then(result => {
 		};
 	}
 });
+
+// Notify background that this tab has a content script ready
+browser.runtime.sendMessage({ type: 'tabReady' }).catch(() => {});
 
 // Global variables that will be shared across all content scripts
 let config;
@@ -52,13 +55,13 @@ async function Log(...args) {
 	}
 
 	if (level === "debug") {
-		console.log("[UsageTracker]", ...args);
+		console.log("[ClaudeCounter]", ...args);
 	} else if (level === "warn") {
-		console.warn("[UsageTracker]", ...args);
+		console.warn("[ClaudeCounter]", ...args);
 	} else if (level === "error") {
-		console.error("[UsageTracker]", ...args);
+		console.error("[ClaudeCounter]", ...args);
 	} else {
-		console.log("[UsageTracker]", ...args);
+		console.log("[ClaudeCounter]", ...args);
 	}
 
 	const timestamp = new Date().toLocaleString('default', {
@@ -120,6 +123,40 @@ const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 function getConversationId() {
 	const match = window.location.pathname.match(/\/chat\/([^/?]+)/);
 	return match ? match[1] : null;
+}
+
+function observeUrlChanges(callback) {
+	let lastUrl = window.location.pathname;
+
+	const fireIfChanged = () => {
+		const current = window.location.pathname;
+		if (current !== lastUrl) {
+			lastUrl = current;
+			callback();
+		}
+	};
+
+	const origPushState = history.pushState.bind(history);
+	const origReplaceState = history.replaceState.bind(history);
+
+	history.pushState = function (...args) {
+		const result = origPushState(...args);
+		fireIfChanged();
+		return result;
+	};
+
+	history.replaceState = function (...args) {
+		const result = origReplaceState(...args);
+		fireIfChanged();
+		return result;
+	};
+
+	// Handle browser back/forward
+	window.addEventListener('popstate', fireIfChanged);
+}
+
+async function getNativeUsage() {
+	return await sendBackgroundMessage({ type: 'getNativeUsage' });
 }
 
 async function sendBackgroundMessage(message) {
@@ -188,10 +225,6 @@ async function setupRateLimitMonitoring() {
 	// Set up rate limit event listener
 	window.addEventListener('rateLimitExceeded', async (event) => {
 		await Log("Rate limit exceeded", event.detail);
-		await sendBackgroundMessage({
-			type: 'rateLimitExceeded',
-			detail: event.detail
-		})
 	});
 
 	// Inject external rate limit monitoring script
@@ -201,6 +234,15 @@ async function setupRateLimitMonitoring() {
 		this.remove();
 	};
 	(document.head || document.documentElement).appendChild(script);
+
+	// Allow setting API key from page console via postMessage
+	window.addEventListener('message', async (event) => {
+		if (event.source !== window) return;
+		if (event.data?.type === 'claudeCounterSetApiKey' && typeof event.data.key === 'string') {
+			await browser.storage.local.set({ apiKey: event.data.key });
+			console.log('[ClaudeCounter] API key saved');
+		}
+	});
 }
 
 async function setupRequestInterception(patterns) {
