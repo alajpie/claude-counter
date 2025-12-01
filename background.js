@@ -1,10 +1,9 @@
 import './lib/browser-polyfill.min.js';
 import './lib/o200k_base.js';
-import { CONFIG, isElectron, sleep, RawLog, FORCE_DEBUG, containerFetch, addContainerFetchListener, StoredMap, getStorageValue, setStorageValue, removeStorageValue, getOrgStorageKey, sendTabMessage, messageRegistry, markTabReady, unmarkTab } from './bg-components/utils.js';
+import { CONFIG, isElectron, RawLog, addContainerFetchListener, StoredMap, getStorageValue, setStorageValue, removeStorageValue, sendTabMessage, messageRegistry, markTabReady, unmarkTab } from './bg-components/utils.js';
 import { tokenStorageManager, tokenCounter, getTextFromContent } from './bg-components/tokenManagement.js';
 import { ConversationData } from './bg-components/bg-dataclasses.js';
 import { ClaudeAPI, ConversationAPI } from './bg-components/claude-api.js';
-import { scheduleAlarm, clearAlarm, getAlarm } from './bg-components/electron-compat.js';
 
 const INTERCEPT_PATTERNS = {
 	onBeforeRequest: {
@@ -34,7 +33,6 @@ let processingLock = null;  // Unix timestamp or null
 const pendingTasks = [];
 const LOCK_TIMEOUT = 30000;  // 30 seconds - if a task takes longer, something's wrong
 let pendingRequests;
-let capModifiers;
 
 let isInitialized = false;
 let functionsPendingUntilInitialization = [];
@@ -81,31 +79,7 @@ if (!isElectron) {
 	// Note: We no longer use webRequest.onCompleted because it doesn't provide response bodies.
 	// Instead, we use the fetch monkeypatch (interceptedResponse handler) which captures the full response.
 
-	// Tab listeners
-	// Track focused/visible claude.ai tabs
-	browser.tabs.onActivated.addListener((activeInfo) =>
-		runOnceInitialized(updateSyncAlarmIntervalAndFetchData, [activeInfo.tabId])
-	);
-
-	// Handle tab updates
-	browser.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
-		if (changeInfo.url?.includes('claude.ai') || tab.url?.includes('claude.ai')) {
-			runOnceInitialized(updateSyncAlarmIntervalAndFetchData, [tabId]);
-		}
-	});
-
-	// Handle tab closing
-	browser.tabs.onRemoved.addListener((tabId, removeInfo) =>
-		runOnceInitialized(updateSyncAlarmIntervalAndFetchData, [tabId, true])
-	);
-
 	addContainerFetchListener();
-}
-
-//Alarm listeners
-async function updateSyncAlarmIntervalAndFetchData(sourceTabId, fromRemovedEvent = false) {
-	// Minimal fork no longer adjusts sync alarms; keep function for Electron hooks.
-	return;
 }
 //#endregion
 
@@ -217,48 +191,11 @@ messageRegistry.register('setAPIKey', async (message) => {
 	}
 });
 
-messageRegistry.register('getCapModifier', async () => {
-	return await capModifiers.get('global') || 1;
-});
-messageRegistry.register('setCapModifier', async (message) => {
-	await capModifiers.set('global', message.modifier);
-	return true;
-});
-
 messageRegistry.register('tabReady', (message, sender) => {
 	if (sender.tab?.id !== undefined) markTabReady(sender.tab.id);
 	return true;
 });
-
-messageRegistry.register('isElectron', () => isElectron);
 messageRegistry.register('getMonkeypatchPatterns', () => INTERCEPT_PATTERNS);
-
-async function openDebugPage() {
-	if (browser.tabs?.create) {
-		browser.tabs.create({
-			url: browser.runtime.getURL('debug.html')
-		});
-		return true;
-	}
-	return 'fallback';
-}
-messageRegistry.register(openDebugPage);
-
-messageRegistry.register('electronTabActivated', (message, sender) => {
-	updateSyncAlarmIntervalAndFetchData(sender.tab.id);
-	return true;
-});
-
-messageRegistry.register('electronTabDeactivated', (message, sender) => {
-	updateSyncAlarmIntervalAndFetchData(sender.tab.id);
-	return true;
-});
-
-messageRegistry.register('electronTabRemoved', (message, sender) => {
-	updateSyncAlarmIntervalAndFetchData(sender.tab.id, true);
-	return true;
-});
-
 // Complex handlers
 async function requestData(message, sender, orgId) {
 	const { conversationId } = message;
@@ -494,13 +431,11 @@ async function processNextTask() {
 
 //#region Variable fill in and initialization
 pendingRequests = new StoredMap("pendingRequests"); // conversationId -> {userId, tabId}
-capModifiers = new StoredMap('capModifiers');
 
 isInitialized = true;
 for (const handler of functionsPendingUntilInitialization) {
 	handler.fn(...handler.args);
 }
 functionsPendingUntilInitialization = [];
-updateSyncAlarmIntervalAndFetchData();
 Log("Done initializing.")
 //#endregion

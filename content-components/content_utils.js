@@ -197,25 +197,6 @@ async function waitForElement(target, selector, maxTime = 1000) {
 	return null;
 }
 
-async function getCurrentModel(maxWait = 3000) {
-	const modelSelector = await waitForElement(document, config.SELECTORS.MODEL_PICKER, maxWait);
-	if (!modelSelector) return undefined;
-
-	let fullModelName = modelSelector.querySelector('.whitespace-nowrap')?.textContent?.trim() || 'default';
-	if (!fullModelName || fullModelName === 'default') return undefined;
-
-	fullModelName = fullModelName.toLowerCase();
-	const modelTypes = config.MODELS
-
-	for (const modelType of modelTypes) {
-		if (fullModelName.includes(modelType.toLowerCase())) {
-			return modelType;
-		}
-	}
-	await Log("Could not find matching model, returning undefined")
-	return undefined;
-}
-
 function isMobileView() {
 	// Check if height > width (portrait orientation)
 	return window.innerHeight > window.innerWidth;
@@ -271,34 +252,6 @@ async function setupRequestInterception(patterns) {
 		this.remove();
 	};
 	(document.head || document.documentElement).appendChild(script);
-}
-
-
-function getResetTimeHTML(timeInfo) {
-	const prefix = 'Reset in: ';
-
-	if (!timeInfo || !timeInfo.timestamp || timeInfo.expired) {
-		return `${prefix}<span>Not set</span>`;
-	}
-
-	const now = Date.now();
-	const diff = timeInfo.timestamp - now;
-
-	// Convert to seconds and round to nearest minute
-	const totalMinutes = Math.round(diff / (1000 * 60));
-
-	if (totalMinutes === 0) {
-		return `${prefix}<span style="color: ${BLUE_HIGHLIGHT}"><1m</span>`;
-	}
-
-	const hours = Math.floor(totalMinutes / 60);
-	const minutes = totalMinutes % 60;
-
-	const timeString = hours > 0 ? `${hours}h ${minutes}m` : `${totalMinutes}m`;
-
-	return `${prefix}<span style="color: ${BLUE_HIGHLIGHT}">${timeString}</span>`;
-}
-
 function setupTooltip(element, tooltip, options = {}) {
 	if (!element || !tooltip) return;
 

@@ -31,8 +31,7 @@
 	"permissions": [
 		"storage",
 		"webRequest",
-		"tabs",
-		"scripting"
+		"tabs"
 	],
 	"host_permissions": [
 		"*://claude.ai/*",

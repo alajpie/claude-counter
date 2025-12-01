@@ -1,36 +1,13 @@
 // Configuration object (moved from constants.json)
 const CONFIG = {
 	"OUTPUT_TOKEN_MULTIPLIER": 5,
-	"USAGE_CAP": {
-		"BASELINE": 700000,
-		"MULTIPLIERS": {
-			"claude_free": 0.2,
-			"claude_pro": 1,
-			"claude_team": 1.5,
-			"claude_max_5x": 5,
-			"claude_max_20x": 20
-		}
-	},
 	"MODELS": [
 		"Opus",
 		"Sonnet",
 		"Haiku"
 	],
-	"MODEL_WEIGHTS": {
-		"Sonnet": 1,
-		"Opus": 5,
-		"Haiku": 0.25
-	},
-	"SYNC_INTERVALS": {
-		"none": 30,
-		"inactive": 10,
-		"active": 4
-	},
-	"WARNING_THRESHOLD": 0.9,
 	"WARNING": {
-		"PERCENT_THRESHOLD": 0.9,
-		"LENGTH": 50000,
-		"COST": 250000
+		"LENGTH": 50000
 	},
 	"SELECTORS": {
 		"MODEL_PICKER": "[data-testid=\"model-selector-dropdown\"]",
@@ -56,14 +33,6 @@ const CONFIG = {
 		"profile_preferences": 850,
 		"enabled_tumeric": 2000
 	},
-	"DONATION_TOKEN_THRESHOLDS": [
-		10000000,
-		50000000,
-		100000000,
-		300000000,
-		1000000000
-	],
-	"CACHING_MULTIPLIER": 0.1,
 	"TOKEN_CACHING_DURATION_MS": 5 * 60 * 1000 // 5 minutes
 };
 
@@ -291,11 +260,6 @@ class StoredMap {
 }
 
 
-// Browser storage helpers
-function getOrgStorageKey(orgId, type) {
-	return `claudeCounter_v6_${orgId}_${type}`;
-}
-
 async function setStorageValue(key, value) {
 	await browser.storage.local.set({ [key]: value });
 	return true;
@@ -383,7 +347,6 @@ export {
 	containerFetch,
 	addContainerFetchListener,
 	StoredMap,
-	getOrgStorageKey,
 	getStorageValue,
 	setStorageValue,
 	removeStorageValue,
