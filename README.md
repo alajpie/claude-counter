@@ -83,7 +83,8 @@ This fork is primarily intended as a **developer / power‑user build**.
 - **Firefox (temporary add-on)**
   1) Clone this repo.  
   2) Go to `about:debugging#/runtime/this-firefox`.  
-  3) Click *Load Temporary Add-on* and pick any file inside this folder (e.g., `manifest.json`).
+  3) Click *Load Temporary Add-on* and choose `manifest_firefox.json`.  
+     - Firefox still disables MV3 service workers; this manifest uses the MV2-style background script, so you won’t see the "background.service_worker is disabled" warning.
 
 - **Store versions**
   - The Chrome/Firefox listings in the original README point to the **original** extension (full-featured, with Firebase usage sync).  
