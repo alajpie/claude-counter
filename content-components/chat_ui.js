@@ -262,35 +262,51 @@ class ChatUI {
 
 		// Keep usage reset countdowns and time markers up to date even when no cache timer
 		const nowForUsage = now;
+		let usageExpired = false;
 		if (this.sessionResetTimestamp && this.sessionUsageSpan) {
-			const text = this.sessionUsageSpan.textContent;
-			const idx = text.indexOf('· resets in');
-			if (idx !== -1) {
-				const prefix = text.slice(0, idx + '· resets in '.length);
-				this.sessionUsageSpan.textContent = `${prefix}${this.formatResetCountdown(this.sessionResetTimestamp)}`;
-			}
-			if (this.sessionMarker && this.sessionWindowStartTimestamp) {
-				const total = this.sessionResetTimestamp - this.sessionWindowStartTimestamp;
-				const elapsed = Math.max(0, Math.min(total, nowForUsage - this.sessionWindowStartTimestamp));
-				const ratio = total > 0 ? elapsed / total : 0;
-				this.sessionMarker.style.left = `${Math.max(0, Math.min(100, ratio * 100))}%`;
-				this.updateMarkerContrast(this.sessionBarFill, this.sessionMarker);
+			if (now >= this.sessionResetTimestamp) {
+				usageExpired = true;
+			} else {
+				const text = this.sessionUsageSpan.textContent;
+				const idx = text.indexOf('· resets in');
+				if (idx !== -1) {
+					const prefix = text.slice(0, idx + '· resets in '.length);
+					this.sessionUsageSpan.textContent = `${prefix}${this.formatResetCountdown(this.sessionResetTimestamp)}`;
+				}
+				if (this.sessionMarker && this.sessionWindowStartTimestamp) {
+					const total = this.sessionResetTimestamp - this.sessionWindowStartTimestamp;
+					const elapsed = Math.max(0, Math.min(total, nowForUsage - this.sessionWindowStartTimestamp));
+					const ratio = total > 0 ? elapsed / total : 0;
+					this.sessionMarker.style.left = `${Math.max(0, Math.min(100, ratio * 100))}%`;
+					this.updateMarkerContrast(this.sessionBarFill, this.sessionMarker);
+				}
 			}
 		}
 		if (this.weeklyResetTimestamp && this.weeklyUsageSpan) {
-			const text = this.weeklyUsageSpan.textContent;
-			const idx = text.indexOf('· resets in');
-			if (idx !== -1) {
-				const prefix = text.slice(0, idx + '· resets in '.length);
-				this.weeklyUsageSpan.textContent = `${prefix}${this.formatResetCountdown(this.weeklyResetTimestamp)}`;
+			if (now >= this.weeklyResetTimestamp) {
+				usageExpired = true;
+			} else {
+				const text = this.weeklyUsageSpan.textContent;
+				const idx = text.indexOf('· resets in');
+				if (idx !== -1) {
+					const prefix = text.slice(0, idx + '· resets in '.length);
+					this.weeklyUsageSpan.textContent = `${prefix}${this.formatResetCountdown(this.weeklyResetTimestamp)}`;
+				}
+				if (this.weeklyMarker && this.weeklyWindowStartTimestamp) {
+					const total = this.weeklyResetTimestamp - this.weeklyWindowStartTimestamp;
+					const elapsed = Math.max(0, Math.min(total, nowForUsage - this.weeklyWindowStartTimestamp));
+					const ratio = total > 0 ? elapsed / total : 0;
+					this.weeklyMarker.style.left = `${Math.max(0, Math.min(100, ratio * 100))}%`;
+					this.updateMarkerContrast(this.weeklyBarFill, this.weeklyMarker);
+				}
 			}
-			if (this.weeklyMarker && this.weeklyWindowStartTimestamp) {
-				const total = this.weeklyResetTimestamp - this.weeklyWindowStartTimestamp;
-				const elapsed = Math.max(0, Math.min(total, nowForUsage - this.weeklyWindowStartTimestamp));
-				const ratio = total > 0 ? elapsed / total : 0;
-				this.weeklyMarker.style.left = `${Math.max(0, Math.min(100, ratio * 100))}%`;
-				this.updateMarkerContrast(this.weeklyBarFill, this.weeklyMarker);
-			}
+		}
+		// Trigger refresh when session or weekly usage window expires
+		if (usageExpired && !this.refreshingUsage) {
+			this.refreshingUsage = true;
+			this.refreshNativeUsage().finally(() => {
+				this.refreshingUsage = false;
+			});
 		}
 		return cacheExpired;
 	}
