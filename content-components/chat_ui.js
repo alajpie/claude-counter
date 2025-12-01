@@ -325,7 +325,7 @@ class ChatUI {
 		this.sessionBar.style.flex = '1';
 		this.sessionBar.style.height = '10px';
 		this.sessionBar.style.position = 'relative';
-		const { strokeColor, markerColor } = this.getProgressChrome();
+		const { strokeColor, markerOutside } = this.getProgressChrome();
 		this.sessionBar.style.border = `1px solid ${strokeColor}`;
 		this.sessionBarFill = document.createElement('div');
 		this.sessionBarFill.className = 'ut-progress-bar';
@@ -334,7 +334,7 @@ class ChatUI {
 		this.sessionMarker.style.top = '0';
 		this.sessionMarker.style.bottom = '0';
 		this.sessionMarker.style.width = '2px';
-		this.sessionMarker.style.background = markerColor;
+		this.sessionMarker.style.background = markerOutside;
 		this.sessionMarker.style.pointerEvents = 'none';
 		this.sessionMarker.style.left = '0%';
 		this.sessionBar.appendChild(this.sessionBarFill);
@@ -356,7 +356,7 @@ class ChatUI {
 		this.weeklyMarker.style.top = '0';
 		this.weeklyMarker.style.bottom = '0';
 		this.weeklyMarker.style.width = '2px';
-		this.weeklyMarker.style.background = markerColor;
+		this.weeklyMarker.style.background = markerOutside;
 		this.weeklyMarker.style.pointerEvents = 'none';
 		this.weeklyMarker.style.left = '0%';
 		this.weeklyBar.appendChild(this.weeklyBarFill);
