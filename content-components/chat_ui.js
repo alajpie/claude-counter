@@ -43,8 +43,9 @@ class ChatUI {
 		};
 	}
 
-	updateMarkerContrast(fillEl, markerEl, colors) {
-		if (!fillEl || !markerEl || !colors) return;
+	updateMarkerContrast(fillEl, markerEl) {
+		if (!fillEl || !markerEl) return;
+		const colors = this.getProgressChrome();
 		const fillWidth = parseFloat(fillEl.style.width || '0') || 0;
 		const markerLeft = parseFloat(markerEl.style.left || '0') || 0;
 		const inside = markerLeft <= fillWidth + 0.1; // slight tolerance
@@ -56,13 +57,12 @@ class ChatUI {
 	}
 
 	refreshProgressChrome() {
-		const colors = this.getProgressChrome();
-		const { strokeColor } = colors;
+		const { strokeColor } = this.getProgressChrome();
 		if (this.lengthBar) this.lengthBar.style.border = `1px solid ${strokeColor}`;
 		if (this.sessionBar) this.sessionBar.style.border = `1px solid ${strokeColor}`;
 		if (this.weeklyBar) this.weeklyBar.style.border = `1px solid ${strokeColor}`;
-		this.updateMarkerContrast(this.sessionBarFill, this.sessionMarker, colors);
-		this.updateMarkerContrast(this.weeklyBarFill, this.weeklyMarker, colors);
+		this.updateMarkerContrast(this.sessionBarFill, this.sessionMarker);
+		this.updateMarkerContrast(this.weeklyBarFill, this.weeklyMarker);
 	}
 
 	initialize() {
