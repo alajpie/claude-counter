@@ -7,6 +7,7 @@ class ChatUI {
 		this.lengthDisplay = null;
 		this.cachedDisplay = null;
 		this.costAndLengthContainer = null;
+		this.lengthBar = null;
 		this.lastCachedUntilTimestamp = null;
 		this.domObserver = null;
 		this.reinjectScheduled = false;
@@ -26,6 +27,42 @@ class ChatUI {
 		this.sessionWindowStartTimestamp = null;
 		this.weeklyWindowStartTimestamp = null;
 		this.refreshingUsage = false;
+	}
+
+	getProgressChrome() {
+		const root = document.documentElement;
+		const modeDark = root.dataset?.mode === 'dark';
+		const modeLight = root.dataset?.mode === 'light';
+		const isDark = modeDark && !modeLight;
+
+		return {
+			strokeColor: isDark ? 'rgba(255,255,255,0.35)' : 'rgba(0,0,0,0.25)',
+			markerOutside: isDark ? '#ffffff' : '#111111',
+			markerInside: '#ffffff',
+			lightShadow: 'none',
+		};
+	}
+
+	updateMarkerContrast(fillEl, markerEl, colors) {
+		if (!fillEl || !markerEl || !colors) return;
+		const fillWidth = parseFloat(fillEl.style.width || '0') || 0;
+		const markerLeft = parseFloat(markerEl.style.left || '0') || 0;
+		const inside = markerLeft <= fillWidth + 0.1; // slight tolerance
+		const target = inside ? colors.markerInside : colors.markerOutside;
+		if (markerEl.dataset._lastMarkerColor === target) return;
+		markerEl.dataset._lastMarkerColor = target;
+		markerEl.style.background = target;
+		markerEl.style.boxShadow = 'none';
+	}
+
+	refreshProgressChrome() {
+		const colors = this.getProgressChrome();
+		const { strokeColor } = colors;
+		if (this.lengthBar) this.lengthBar.style.border = `1px solid ${strokeColor}`;
+		if (this.sessionBar) this.sessionBar.style.border = `1px solid ${strokeColor}`;
+		if (this.weeklyBar) this.weeklyBar.style.border = `1px solid ${strokeColor}`;
+		this.updateMarkerContrast(this.sessionBarFill, this.sessionMarker, colors);
+		this.updateMarkerContrast(this.weeklyBarFill, this.weeklyMarker, colors);
 	}
 
 	initialize() {
@@ -116,6 +153,7 @@ class ChatUI {
 			// No active conversation (e.g. home page) – hide the counter contents
 			this.lengthDisplay.innerHTML = '';
 			this.cachedDisplay.innerHTML = '';
+			this.lengthBar = null;
 			this.updateContainer();
 			return;
 		}
@@ -140,7 +178,9 @@ class ChatUI {
 		bar.style.marginLeft = '0';
 		bar.style.position = 'relative';
 		bar.style.borderRadius = '2px';
-		bar.style.border = '1px solid rgba(255,255,255,0.35)';
+		const { strokeColor } = this.getProgressChrome();
+		bar.style.border = `1px solid ${strokeColor}`;
+		this.lengthBar = bar;
 
 		const barFill = document.createElement('div');
 		barFill.className = 'ut-progress-bar';
@@ -150,6 +190,7 @@ class ChatUI {
 		bar.appendChild(barFill);
 		barContainer.appendChild(bar);
 		this.lengthDisplay.appendChild(barContainer);
+		this.refreshProgressChrome();
 
 		if (conversationData.isCurrentlyCached()) {
 			this.lastCachedUntilTimestamp = conversationData.conversationIsCachedUntil;
@@ -200,6 +241,7 @@ class ChatUI {
 	updateCachedTime() {
 		let cacheExpired = false;
 		const now = Date.now();
+		this.refreshProgressChrome();
 
 		// Update cache timer if present
 		if (this.lastCachedUntilTimestamp && this.cachedDisplay) {
@@ -232,6 +274,7 @@ class ChatUI {
 				const elapsed = Math.max(0, Math.min(total, nowForUsage - this.sessionWindowStartTimestamp));
 				const ratio = total > 0 ? elapsed / total : 0;
 				this.sessionMarker.style.left = `${Math.max(0, Math.min(100, ratio * 100))}%`;
+				this.updateMarkerContrast(this.sessionBarFill, this.sessionMarker);
 			}
 		}
 		if (this.weeklyResetTimestamp && this.weeklyUsageSpan) {
@@ -246,6 +289,7 @@ class ChatUI {
 				const elapsed = Math.max(0, Math.min(total, nowForUsage - this.weeklyWindowStartTimestamp));
 				const ratio = total > 0 ? elapsed / total : 0;
 				this.weeklyMarker.style.left = `${Math.max(0, Math.min(100, ratio * 100))}%`;
+				this.updateMarkerContrast(this.weeklyBarFill, this.weeklyMarker);
 			}
 		}
 		return cacheExpired;
@@ -265,7 +309,8 @@ class ChatUI {
 		this.sessionBar.style.flex = '1';
 		this.sessionBar.style.height = '10px';
 		this.sessionBar.style.position = 'relative';
-		this.sessionBar.style.border = '1px solid rgba(255,255,255,0.35)';
+		const { strokeColor, markerColor } = this.getProgressChrome();
+		this.sessionBar.style.border = `1px solid ${strokeColor}`;
 		this.sessionBarFill = document.createElement('div');
 		this.sessionBarFill.className = 'ut-progress-bar';
 		this.sessionMarker = document.createElement('div');
@@ -273,7 +318,7 @@ class ChatUI {
 		this.sessionMarker.style.top = '0';
 		this.sessionMarker.style.bottom = '0';
 		this.sessionMarker.style.width = '2px';
-		this.sessionMarker.style.background = 'rgba(255,255,255,0.7)';
+		this.sessionMarker.style.background = markerColor;
 		this.sessionMarker.style.pointerEvents = 'none';
 		this.sessionMarker.style.left = '0%';
 		this.sessionBar.appendChild(this.sessionBarFill);
@@ -287,7 +332,7 @@ class ChatUI {
 		this.weeklyBar.style.flex = '1';
 		this.weeklyBar.style.height = '10px';
 		this.weeklyBar.style.position = 'relative';
-		this.weeklyBar.style.border = '1px solid rgba(255,255,255,0.35)';
+		this.weeklyBar.style.border = `1px solid ${strokeColor}`;
 		this.weeklyBarFill = document.createElement('div');
 		this.weeklyBarFill.className = 'ut-progress-bar';
 		this.weeklyMarker = document.createElement('div');
@@ -295,7 +340,7 @@ class ChatUI {
 		this.weeklyMarker.style.top = '0';
 		this.weeklyMarker.style.bottom = '0';
 		this.weeklyMarker.style.width = '2px';
-		this.weeklyMarker.style.background = 'rgba(255,255,255,0.7)';
+		this.weeklyMarker.style.background = markerColor;
 		this.weeklyMarker.style.pointerEvents = 'none';
 		this.weeklyMarker.style.left = '0%';
 		this.weeklyBar.appendChild(this.weeklyBarFill);
@@ -312,6 +357,7 @@ class ChatUI {
 		this.usageLine.appendChild(this.sessionUsageSpan);
 		this.usageLine.appendChild(barsContainer);
 		this.usageLine.appendChild(this.weeklyUsageSpan);
+		this.refreshProgressChrome();
 
 		// Tooltips for usage labels and bars
 		const sessionTooltip = document.createElement('div');
@@ -364,6 +410,7 @@ class ChatUI {
 	}
 
 	async refreshNativeUsage() {
+		this.refreshProgressChrome();
 		let usage;
 		try {
 			usage = await getNativeUsage();
@@ -398,6 +445,7 @@ class ChatUI {
 				const ratio = total > 0 ? elapsed / total : 0;
 				this.sessionMarker.style.left = `${Math.max(0, Math.min(100, ratio * 100))}%`;
 			}
+			this.updateMarkerContrast(this.sessionBarFill, this.sessionMarker);
 		} else {
 			this.sessionUsageSpan.textContent = '';
 			if (this.sessionBarFill) {
@@ -428,6 +476,7 @@ class ChatUI {
 				const ratio = total > 0 ? elapsed / total : 0;
 				this.weeklyMarker.style.left = `${Math.max(0, Math.min(100, ratio * 100))}%`;
 			}
+			this.updateMarkerContrast(this.weeklyBarFill, this.weeklyMarker);
 		} else {
 			this.weeklyUsageSpan.textContent = '';
 			if (this.weeklyBarFill) {
