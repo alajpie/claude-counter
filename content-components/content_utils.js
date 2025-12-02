@@ -104,6 +104,9 @@ async function Log(...args) {
 }
 
 async function logError(error) {
+	// Ignore null/undefined errors
+	if (error == null) return;
+
 	// If object is not an error, log it as a string
 	if (!(error instanceof Error)) {
 		await Log("error", JSON.stringify(error));
@@ -252,6 +255,8 @@ async function setupRequestInterception(patterns) {
 		this.remove();
 	};
 	(document.head || document.documentElement).appendChild(script);
+}
+
 function setupTooltip(element, tooltip, options = {}) {
 	if (!element || !tooltip) return;
 

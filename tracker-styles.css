@@ -192,7 +192,13 @@
 }
 
 .ut-hidden {
-	display: none;
+	visibility: hidden !important;
+	width: 0 !important;
+	overflow: hidden !important;
+	margin: 0 !important;
+	padding: 0 !important;
+	border: none !important;
+	flex: 0 !important;
 }
 
 /* Position utilities */

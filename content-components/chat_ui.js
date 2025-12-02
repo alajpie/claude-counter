@@ -473,6 +473,10 @@ class ChatUI {
 
 		// Weekly line
 		if (weekly && typeof weekly.utilization === 'number') {
+			// Show weekly elements
+			this.weeklyUsageSpan.classList.remove('ut-hidden');
+			if (this.weeklyBar) this.weeklyBar.classList.remove('ut-hidden');
+
 			const pct = Math.round(weekly.utilization);
 			this.weeklyResetTimestamp = weekly.resets_at ? Date.parse(weekly.resets_at) : null;
 			this.weeklyWindowStartTimestamp = this.weeklyResetTimestamp
@@ -494,10 +498,10 @@ class ChatUI {
 			}
 			this.updateMarkerContrast(this.weeklyBarFill, this.weeklyMarker);
 		} else {
-			this.weeklyUsageSpan.textContent = '';
-			if (this.weeklyBarFill) {
-				this.weeklyBarFill.style.width = '0%';
-			}
+			// Hide weekly elements (free plan doesn't have weekly usage)
+			this.weeklyUsageSpan.classList.add('ut-hidden');
+			if (this.weeklyBar) this.weeklyBar.classList.add('ut-hidden');
+
 			this.weeklyResetTimestamp = null;
 			this.weeklyWindowStartTimestamp = null;
 		}
