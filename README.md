@@ -75,16 +75,20 @@ If you want the full cross‑device tracking, sidebar UI, and more advanced usag
 This fork is primarily intended as a **developer / power‑user build**.
 
 - **Chrome / Edge (unpacked)**
-  1) Clone this repo.  
-  2) Go to `chrome://extensions` (or Edge extensions).  
-  3) Enable *Developer mode*.  
+  1) Clone or download this repo.
+  2) Go to `chrome://extensions` (or Edge extensions).
+  3) Enable *Developer mode*.
   4) Click *Load unpacked* and select this folder.
 
 - **Firefox (temporary add-on)**
-  1) Clone this repo.  
-  2) Go to `about:debugging#/runtime/this-firefox`.  
-  3) Click *Load Temporary Add-on* and choose `manifest_firefox.json`.  
-     - Firefox still disables MV3 service workers; this manifest uses the MV2-style background script, so you won’t see the "background.service_worker is disabled" warning.
+  1) Clone or download this repo.
+  2) Go to `about:debugging#/runtime/this-firefox`.
+  3) Click *Load Temporary Add-on* and select any file in the folder.
+
+- **Browser-specific manifests** (optional)
+  - `manifest_chrome.json` and `manifest_firefox.json` are optimized for each browser.
+  - To use one, rename it to `manifest.json` (replacing the default).
+  - The Firefox version includes `webRequestBlocking` for container support.
 
 - **Store versions**
   - The Chrome/Firefox listings in the original README point to the **original** extension (full-featured, with Firebase usage sync).  
