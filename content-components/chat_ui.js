@@ -98,42 +98,6 @@ class ChatUI {
 		const chatMenu = document.querySelector(config.SELECTORS.CHAT_MENU);
 		if (!chatMenu) return;
 
-		const titleLine = chatMenu.closest('.flex.min-w-0.flex-1');
-		if (!titleLine) return;
-
-		let header = titleLine;
-		while (header && !header.tagName.toLowerCase().includes('header')) {
-			header = header.parentElement;
-		}
-
-		if (header && header.classList.contains('h-12') && isMobileView()) {
-			header.classList.remove('h-12');
-		}
-
-		const projectLink = titleLine.querySelector('a[href^="/project/"]');
-		if (projectLink) {
-			if (!titleLine.querySelector('.chat-project-wrapper')) {
-				const wrapper = document.createElement('div');
-				wrapper.className = 'chat-project-wrapper flex min-w-0 flex-row items-center md:items-center 2xl:justify-center';
-
-				projectLink.remove();
-				wrapper.appendChild(projectLink);
-
-				const chatMenuContainer = chatMenu.closest('.flex.min-w-0.items-center');
-				if (chatMenuContainer) {
-					chatMenuContainer.remove();
-					wrapper.appendChild(chatMenuContainer);
-				}
-
-				titleLine.insertBefore(wrapper, titleLine.firstChild);
-			}
-		}
-
-		titleLine.classList.remove('md:items-center');
-		titleLine.classList.add('md:items-start');
-		titleLine.classList.remove('md:flex-row');
-		titleLine.classList.add('md:flex-col');
-
 		const chatMenuParent = chatMenu.closest('.chat-project-wrapper') || chatMenu.parentElement;
 		if (chatMenuParent && chatMenuParent.nextElementSibling !== this.costAndLengthContainer) {
 			chatMenuParent.after(this.costAndLengthContainer);
